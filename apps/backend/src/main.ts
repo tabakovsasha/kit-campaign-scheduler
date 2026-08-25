@@ -12,6 +12,11 @@ async function bootstrap() {
     logger: new IsoConsoleLogger(),
   });
 
+  app.getHttpAdapter().getInstance().set('trust proxy', [
+    'loopback',
+    'linklocal',
+    'uniquelocal',
+  ]);
   app.setGlobalPrefix('api');
   app.use(new RequestIdMiddleware().use);
   app.useGlobalPipes(

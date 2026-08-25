@@ -1,6 +1,11 @@
-# если деплоим во вне, то нужно задать доменное имя 
-# Локальный запуск на ноутбуке
-http://localhost, http://127.0.0.1 {
+{
+	servers :80 {
+		trusted_proxies static 192.168.50.112/32
+		trusted_proxies_strict
+	}
+}
+
+:80 {
 	encode zstd gzip
 
 	header {
@@ -8,11 +13,15 @@ http://localhost, http://127.0.0.1 {
 		X-Frame-Options DENY
 		Referrer-Policy no-referrer
 		Permissions-Policy camera=(), microphone=(), geolocation=()
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://localhost:4000 http://localhost https://localhost; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 	}
 
-	@api path /api*
-	reverse_proxy @api backend:4000
+	@api path /api /api/*
+	handle @api {
+		reverse_proxy backend:4000
+	}
 
-	reverse_proxy frontend:80
+	handle {
+		reverse_proxy frontend:80
+	}
 }

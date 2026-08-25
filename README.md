@@ -24,15 +24,13 @@
 ## Демо сервиса
 
 - Демо-стенд: https://kit-campaign-scheduler.digital-universe.xyz
-- Тестовые учётные данные: `admin` / `M@zafaka123!@#`
 
 
 ## Архитектура
 
 **Архитектура:**
-Проект состоит из 4 сервисов: postgres, redis, backend, frontend.
-Frontend и backend взаимодействуют внутри Docker-сети между контейнерами.
-Снаружи доступны только необходимые точки входа для работы приложения и API.
+Production stack состоит из пяти сервисов: `gateway`, `frontend`, `backend`, `postgres`, `redis`.
+Единственная опубликованная точка входа приложения — `192.168.50.111:4000`, ведущая в HTTP gateway.
 
 **Техстек:**
 - Frontend: React + TypeScript + Vite + Tailwind CSS
@@ -54,7 +52,54 @@ Frontend и backend взаимодействуют внутри Docker-сети 
 - `backend`: API, валидация расписаний, авторизация, применение `pause/resume` в Voximplant.
 - `postgres`: источник истины для пользователей, интеграции, расписаний и журнала действий.
 - `redis`: служебный инфраструктурный компонент для кеша/очередей (подключен в окружении).
-- `caddy`: единственная внешняя точка входа, проксирует `/api*` в backend и остальной трафик во frontend.
+- `gateway`: внутренний HTTP gateway на Caddy; проксирует `/api` и `/api/*` в backend, остальной трафик во frontend.
+
+### Production topology
+
+```text
+Internet
+  |
+  | HTTPS
+  v
+External Caddy VM (192.168.50.112)
+  |
+  | HTTP, private LAN
+  v
+Application VM (192.168.50.111:4000)
+  |
+  v
+Internal gateway:80
+  |-- /api, /api/* --> backend:4000
+  |                       |-- postgres:5432
+  |                       `-- redis:6379
+  `-- everything else -> frontend:80
+```
+
+- Домен: `kit-campaign-scheduler.digital-universe.xyz`.
+- TLS, сертификаты и HTTP-to-HTTPS redirect обслуживает только внешний Caddy.
+- Project-level gateway работает только по HTTP и не хранит TLS-сертификаты.
+- Frontend обращается к API через same-origin путь `/api`.
+- Стандартные `Host`, `X-Forwarded-For`, `X-Forwarded-Proto` и `X-Forwarded-Host` проходят через оба Caddy. Internal gateway доверяет этим заголовкам только от `192.168.50.112`, а NestJS настроен на работу за trusted proxies.
+
+### Docker networks
+
+| Network | Members | Internet egress | Purpose |
+| --- | --- | --- | --- |
+| `web-network` | gateway, frontend, backend | yes | HTTP routing и outbound-доступ backend к Voximplant API |
+| `data-network` (`internal`) | backend, postgres, redis | no через эту сеть | Изолированный доступ к PostgreSQL и Redis |
+
+Backend подключен к обеим сетям, поэтому доступ к данным изолирован, а исходящий интернет сохраняется через `web-network`.
+
+### Security boundaries
+
+```text
+Internet -> External Caddy :80/:443                    ALLOW
+Internet -> Application VM 192.168.50.111:4000         BLOCK / NO NAT
+External Caddy 192.168.50.112 -> 192.168.50.111:4000   ALLOW
+Application VM -> Internet via NAT                     ALLOW
+```
+
+На Application VM firewall рекомендуется разрешить TCP/4000 только от `192.168.50.112`. Настройка firewall не входит в Docker stack.
 
 ### Цикл работы планировщика
 
@@ -84,7 +129,8 @@ Frontend и backend взаимодействуют внутри Docker-сети 
 
 - Проверить статус контейнеров: `docker compose ps`.
 - Проверить логи backend: `docker compose logs -f backend`.
-- Проверить доступность API через Caddy: `http://localhost/api/health`.
+- Проверить ingress на Application VM: `curl http://192.168.50.111:4000/`.
+- Проверить API health через весь ingress: `curl http://192.168.50.111:4000/api/health`.
 - Проверить доступность БД: `docker compose exec postgres pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"`.
 
 ### Если backend не стартует
@@ -126,10 +172,20 @@ sed -i "s|^JWT_REFRESH_SECRET=.*|JWT_REFRESH_SECRET=$(openssl rand -hex 64)|" .e
 sed -i "s|^TOKEN_ENCRYPTION_KEY=.*|TOKEN_ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env
 ```
 
-3. Собираем все сервисы:
+3. На Application VM `192.168.50.111` собираем и запускаем все сервисы:
 
 ```bash
 docker compose up -d --build
+```
+
+Значение `HOST_BIND_IP=192.168.50.111` требует, чтобы этот IP был назначен сетевому интерфейсу текущей машины. На ноутбуке или другой VM Docker вернет `bind: can't assign requested address`.
+
+Для локальной проверки production stack используйте loopback override, не изменяя production-значение в `.env`:
+
+```bash
+HOST_BIND_IP=127.0.0.1 docker compose up -d --build
+curl -fsS http://127.0.0.1:4000/
+curl -fsS http://127.0.0.1:4000/api/health
 ```
 
 4. Миграции Prisma теперь применяются автоматически при старте backend-контейнера.
@@ -137,16 +193,30 @@ docker compose up -d --build
 При `docker compose up -d --build` backend сначала выполняет `prisma migrate deploy`, и только потом запускает HTTP-сервер NestJS.
 Если миграция завершается ошибкой, контейнер backend не стартует (это нормальное защитное поведение).
 
-5. Как работает Caddy при запуске через Compose:
-- Сервис caddy поднимается вместе с остальными контейнерами и публикует наружу порты 80 и 443.
-- Caddy читает правила из [Caddyfile](Caddyfile): все запросы на `/api*` проксируются в backend (`backend:4000`).
-- Остальные запросы проксируются во frontend (`frontend:80`), поэтому браузер всегда обращается к одной точке входа.
-- Включено сжатие ответов (`zstd`, `gzip`) для ускорения отдачи контента.
+5. Compose публикует ровно один порт:
 
-6. Адреса доступа:
-- Frontend (через Caddy): https://DOMAIN_NAME:443
-- Frontend: http://localhost:80
-- Backend API (через Caddy): http://localhost/api
+```text
+192.168.50.111:4000 -> gateway:80
+```
+
+`frontend`, `backend`, `postgres` и `redis` host ports не публикуют. Значения bind задаются через `HOST_BIND_IP` и `HOST_HTTP_PORT` в `.env`.
+
+6. Настройте внешний Caddy на VM `192.168.50.112`:
+
+```caddyfile
+kit-campaign-scheduler.digital-universe.xyz {
+  reverse_proxy 192.168.50.111:4000
+}
+```
+
+Внешний Caddy завершает TLS и управляет сертификатами. В repository и production Compose он не входит.
+
+7. Проверка после запуска:
+
+```bash
+curl -fsS http://192.168.50.111:4000/
+curl -fsS http://192.168.50.111:4000/api/health
+```
 
 
 
@@ -191,7 +261,7 @@ npm run db:migrate
 5. Запускаем backend:
 
 ```bash
-npm run dev:backend
+CORS_ORIGIN=http://localhost:5173 npm run dev:backend
 ```
 
 Backend API:
@@ -227,7 +297,7 @@ docker compose up -d --force-recreate backend
 curl -i -sS -X POST 'https://domain.com/api/auth/register' \
   -H 'Content-Type: application/json' \
   -d '{"login":"LOGIN","password":"PASSWORD"}'
-````
+```
 
 3. После этого отключите публичную регистрацию:
 ```bash
