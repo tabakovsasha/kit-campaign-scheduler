@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+coverage
+*.log
+.DS_Store
+apps/backend/.env
+apps/frontend/.env
+exampe_api_methods/

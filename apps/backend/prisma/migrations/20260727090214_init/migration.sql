@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "ScheduleException_scheduleId_startDate_endDate_isRecurringYearl" RENAME TO "ScheduleException_scheduleId_startDate_endDate_isRecurringY_key";

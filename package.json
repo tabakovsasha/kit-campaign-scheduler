@@ -1,0 +1,22 @@
+{
+  "name": "voximplant-scheduler-service",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "apps/backend",
+    "apps/frontend"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/backend & npm run dev -w apps/frontend",
+    "dev:backend": "npm run dev -w apps/backend",
+    "dev:frontend": "npm run dev -w apps/frontend",
+    "build": "npm run build -w apps/backend && npm run build -w apps/frontend",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "db:migrate": "npm run prisma:migrate -w apps/backend -- --name init"
+  }
+}

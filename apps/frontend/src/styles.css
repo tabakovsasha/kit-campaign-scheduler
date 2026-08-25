@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', 'Roboto', 'SF Pro Display', 'Segoe UI', sans-serif;
+  color-scheme: light;
+  --color-canvas: 244 245 247;
+  --color-surface: 255 255 255;
+  --color-line: 219 224 230;
+  --color-ink: 26 28 33;
+  --color-muted: 94 106 120;
+  --color-primary: 124 77 255;
+  --color-primary-strong: 102 62 214;
+  --color-primary-soft: 239 233 255;
+  --color-success: 16 185 129;
+  --color-success-soft: 225 248 239;
+  --color-danger: 239 68 68;
+  --color-danger-soft: 254 238 238;
+  --color-overlay: 17 24 39;
+}
+
+html {
+  font-family: 'Inter', 'Roboto', 'SF Pro Display', 'Segoe UI', sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: rgb(var(--color-canvas));
+  background-image: radial-gradient(
+      circle at top left,
+      rgba(124, 77, 255, 0.1),
+      transparent 28%
+    ),
+    radial-gradient(circle at bottom right, rgba(98, 63, 224, 0.08), transparent 24%);
+  color: rgb(var(--color-ink));
+}
+
+#root {
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(124, 77, 255, 0.2);
+  color: rgb(var(--color-ink));
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 260ms ease-out both;
+}
+
+.animate-fade-up-delayed {
+  animation: fade-up 340ms ease-out both;
+}
+
+.animate-pop-in {
+  animation: pop-in 200ms ease-out both;
+}
+
+.animate-overlay-in {
+  animation: overlay-in 180ms ease-out both;
+}
+
+.stagger-list > * {
+  animation: fade-up 260ms ease-out both;
+}
+
+.stagger-list > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.stagger-list > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.stagger-list > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.stagger-list > *:nth-child(5) {
+  animation-delay: 160ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-fade-up-delayed,
+  .animate-pop-in,
+  .animate-overlay-in,
+  .stagger-list > * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
